@@ -124,7 +124,8 @@ export default {
 
             const fakeHostName = `${fakeUserIDMD5.slice(6, 9)}.${fakeUserIDMD5.slice(13, 19)}`;
 
-            proxyIP = env.PROXYIP || env.proxyip || proxyIP;
+            forceProxyIP = env.ForceUseProxyIP || forceProxyIP;
+			proxyIP = env.PROXYIP || env.proxyip || proxyIP;
             proxyIPs = await 整理(proxyIP);
             proxyIP = proxyIPs[Math.floor(Math.random() * proxyIPs.length)];
             DNS64Server = env.DNS64 || env.NAT64 || DNS64Server;
@@ -179,8 +180,15 @@ export default {
                 if (url.searchParams.has('sub') && url.searchParams.get('sub') !== '') sub = url.searchParams.get('sub').toLowerCase();
                 if (url.searchParams.has('notls')) noTLS = 'true';
 
-                if (url.searchParams.has('proxyip')) {
-                    path = `/proxyip=${url.searchParams.get('proxyip')}`;
+                if(url.searchParams.has('forceProxyIP')) {
+					path = `?forceProxyIP=true`;
+				}
+				if (url.searchParams.has('proxyip')) {
+					if (url.searchParams.has('forceProxyIP')) {
+						path = `/proxyip=${url.searchParams.get('proxyip')}&forceProxyIP=true`;
+					} else {
+                    	path = `/proxyip=${url.searchParams.get('proxyip')}`;
+					}
                     请求CF反代IP = 'false';
                 } else if (url.searchParams.has('socks5')) {
                     path = url.searchParams.has('globalproxy') ? `/?socks5=${url.searchParams.get('socks5')}&globalproxy` : `/?socks5=${url.searchParams.get('socks5')}`;
@@ -565,6 +573,7 @@ async function handleTCPOutBound(remoteSocket, addressType, addressRemote, portR
     }
 
     let useSocks = false;
+	let tcpSocket;
     if (go2Socks5s.length > 0 && enableSocks) useSocks = await useSocks5Pattern(addressRemote);
     // 首次尝试连接远程服务器
 	if (forceProxyIP) {
@@ -579,14 +588,28 @@ async function handleTCPOutBound(remoteSocket, addressType, addressRemote, portR
 			proxyIP = proxyIP.split(':')[0] || proxyIP;
 		}
 		if (proxyIP.includes('.tp')) portRemote = proxyIP.split('.tp')[1].split('.')[0] || portRemote;
-		let tcpSocket = await connectAndWrite(proxyIP.toLowerCase() || addressRemote, portRemote);
+		tcpSocket = await connectAndWrite(proxyIP.toLowerCase() || addressRemote, portRemote);
+
+		//默认使用nat64
+		/*if (!useSocks) {
+            const nat64Proxyip = `[${await resolveToIPv6(addressRemote)}]`;
+            log(`NAT64 代理连接到 ${nat64Proxyip}:443`);
+            tcpSocket = await connectAndWrite(nat64Proxyip, 443);
+        }
+        tcpSocket.closed.catch(error => {
+            console.log('retry tcpSocket closed error', error);
+        }).finally(() => {
+            safeCloseWebSocket(webSocket);
+        })*/
+		remoteSocketToWS(tcpSocket, webSocket, 维列斯ResponseHeader, null, log);
 	} else {
-		let tcpSocket = await connectAndWrite(addressRemote, portRemote, useSocks, enableHttp);
+		tcpSocket = await connectAndWrite(addressRemote, portRemote, useSocks, enableHttp);
+		remoteSocketToWS(tcpSocket, webSocket, 维列斯ResponseHeader, retry, log);
 	}
     // 当远程 Socket 就绪时，将其传递给 WebSocket
     // 建立从远程服务器到 WebSocket 的数据流，用于将远程服务器的响应发送回客户端
     // 如果连接失败或无数据，retry 函数将被调用进行重试
-    remoteSocketToWS(tcpSocket, webSocket, 维列斯ResponseHeader, retry, log);
+    //remoteSocketToWS(tcpSocket, webSocket, 维列斯ResponseHeader, retry, log);
 }
 
 /**
@@ -7221,4 +7244,12 @@ function config_Html(token = "test", proxyhost = "") {
     return html;
 
 }
+
+
+
+
+
+
+
+
 
